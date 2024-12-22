@@ -1,40 +1,34 @@
-TaskHandle_t Task1;
-TaskHandle_t Task2;
-
-// How many leds in your strip?
-#define NUM_LEDS 2
-
-// For led chips like WS2812, which have a data line, ground, and power, you just
-// need to define DATA_PIN.  For led chipsets that are SPI based (four wires - data, clock,
-// ground, and power), like the LPD8806 define both DATA_PIN and CLOCK_PIN
-// Clock pin only needed for SPI based chipsets when not using hardware SPI
-
 #include <ESP32-TWAI-CAN.hpp>
-
 #include <Adafruit_NeoPixel.h>
+
+//Setting Neopixel data output pin
+//Setting number of Neopixels in chain
 #define DATA_PIN 36
 #define NUMPIXELS 2
-
 Adafruit_NeoPixel pixels(NUMPIXELS, DATA_PIN, NEO_GRB + NEO_KHZ800);
-#define DELAYVAL 500
 
-// Define the array of leds
-//CRGB leds[NUM_LEDS];
-
-// Default for ESP32
+// CAN TX-RX Pins
 #define CAN_TX		11
 #define CAN_RX		10
 
+//CAN Recieving frame object
 CanFrame rxFrame;
 
-//Sets rpm, clt, gear integers for grabbing CAN data
+//Defining Tasks
+TaskHandle_t CAN_Task;
+TaskHandle_t Neopixel_Task;
+
+//Defines global rpm, clt, gear integers for grabbing CAN data
 int rpm;
 int clt;
 int gear;
-int driverSwitch1;
-int driverSwitch2;
 int driverSwitch3;
 
+//value at which the "Cold" and "Hot" lights are turned on, in Celsius
+//Value at which light starts flashing
+int coolantCold = 70;
+int coolantHot = 105;
+int coolantFlash = 120;
 
 //OBD TX frame setup
 void sendObdFrame(uint8_t obdId) {
@@ -55,312 +49,170 @@ void sendObdFrame(uint8_t obdId) {
 }
 
 void loop(){
-
+  //Do nothing :)
 }
 
 void setup() {
-    Serial.begin(115200);
+  Serial.begin(115200);
 
-    xTaskCreatePinnedToCore(
-      Task1code, /* Function to implement the task */
-      "Task1", /* Name of the task */
-      10000,  /* Stack size in words */
-      NULL,  /* Task input parameter */
-      0,  /* Priority of the task */
-      &Task1,  /* Task handle. */
-      0); /* Core where the task should run */
+  //Set pinModes for onboard button and onboard LED
+  pinMode(35, INPUT_PULLUP);
+  pinMode(14, OUTPUT);
 
-    xTaskCreatePinnedToCore(
-      Task2code, /* Function to implement the task */
-      "Task2", /* Name of the task */
-      10000,  /* Stack size in words */
-      NULL,  /* Task input parameter */
-      1,  /* Priority of the task */
-      &Task2,  /* Task handle. */
-      1); /* Core where the task should run */
+  //Setting up task for CAN bus stuffz
+  xTaskCreatePinnedToCore(
+    CAN_Task_Code, /* Function to implement the task */
+    "CAN Task", /* Name of the task */
+    10000,  /* Stack size in words */
+    NULL,  /* Task input parameter */
+    0,  /* Priority of the task */
+    &CAN_Task,  /* Task handle. */
+    0); /* Core where the task should run */
 
-    //delay(2000); //Delay 
+  //Settings up task for Neopixel lighting
+  xTaskCreatePinnedToCore(
+    Neopixel_Task_Code, /* Function to implement the task */
+    "Neopixel Task", /* Name of the task */
+    10000,  /* Stack size in words */
+    NULL,  /* Task input parameter */
+    1,  /* Priority of the task */
+    &Neopixel_Task,  /* Task handle. */
+    1); /* Core where the task should run */
 
-    //FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, NUM_LEDS);
-    //FastLED.setBrightness(255);  // Set global brightness to 50%
-    //pinMode(35, INPUT_PULLUP);
-    //pinMode(14, OUTPUT);
-    
-    //delay(2000);  // If something ever goes wrong this delay will allow upload.
+  //CAN setup
+  ESP32Can.setPins(CAN_TX, CAN_RX);
+  ESP32Can.setRxQueueSize(5);
+	ESP32Can.setTxQueueSize(5);
+  ESP32Can.setSpeed(ESP32Can.convertSpeed(1000));
 
-    //pixels.begin();
+  // You can also just use .begin()..
+  if(ESP32Can.begin()) {
+      Serial.println("CAN bus started!");
+  } else {
+      Serial.println("CAN bus failed!");
+  }
 
-    //CAN setup
-    ESP32Can.setPins(CAN_TX, CAN_RX);
-    ESP32Can.setRxQueueSize(5);
-	  ESP32Can.setTxQueueSize(5);
-    ESP32Can.setSpeed(ESP32Can.convertSpeed(1000));
-
-      // You can also just use .begin()..
-    if(ESP32Can.begin()) {
-        Serial.println("CAN bus started!");
-    } else {
-        Serial.println("CAN bus failed!");
-    }
-
-    // or override everything in one command;
-    // It is also safe to use .begin() without .end() as it calls it internally
-    // if(ESP32Can.begin(ESP32Can.convertSpeed(1000), CAN_TX, CAN_RX, 10, 10)) {
-    //     Serial.println("CAN bus started!");
-    // } else {
-    //     Serial.println("CAN bus failed!");
-    // }
+  // or override everything in one command;
+  // It is also safe to use .begin() without .end() as it calls it internally
+  // if(ESP32Can.begin(ESP32Can.convertSpeed(1000), CAN_TX, CAN_RX, 10, 10)) {
+  //     Serial.println("CAN bus started!");
+  // } else {
+  //     Serial.println("CAN bus failed!");
+  // }
 
 }
 
-void Task1code(void *parameter) {
-    //pixels.clear();
-    while(true){
-      //Serial.println("Running Task 1");
+void CAN_Task_Code(void *parameter) {
+
+  while(true){
+
+    //Shitasses
     static uint32_t lastStamp = 0;
     uint32_t currentStamp = millis();
-    //int buttonState = digitalRead(35);
 
+    //Onboard button
+    int buttonState = digitalRead(35);
+
+    //CAN TX-ing
     if(currentStamp - lastStamp > 50) {   // sends OBD2 request every second
       lastStamp = currentStamp;
       //sendObdFrame(5); // For coolant temperature
     }
     
-    // if(buttonState == 0){
-    //   digitalWrite(14, HIGH);
-    // }
-    // else
-    // {
-    //   digitalWrite(14, LOW);
-    // }
+    //Onboard button LED driving, button pressed (0, pulled up) turn the LED on
+    if(buttonState == 0){
+      digitalWrite(14, HIGH);
+    }
+    else
+    {
+      digitalWrite(14, LOW);
+    }
 
-      if(ESP32Can.readFrame(rxFrame, 1000)) {
-        
-      //Comment out if too many frames
-      //Serial.printf("Received frame: %03X  \r\n", rxFrame.identifier);
-        if(rxFrame.identifier == 0x640) {  
-          //Serial.println("RECIEVED");
-          // Standard OBD2 frame responce ID
-          byte rpmLow = rxFrame.data[0];
-          byte rpmHigh = rxFrame.data[1];
-          rpm = (rpmLow << 8) + rpmHigh;
-          //Serial.println(rpm);
-        }
+    //Checks if there are any frames to read
+    if(ESP32Can.readFrame(rxFrame, 1000)) {
 
-        if(rxFrame.identifier == 0x649){
-          clt = rxFrame.data[0] - 40;
-        }
-
-        if(rxFrame.identifier == 0x64D){
-          gear = rxFrame.data[6] & 0b00001111;
-          
-        }
-        if(rxFrame.identifier == 0x64E){
-          driverSwitch3 = rxFrame.data[3] & 0b01000000;
-          Serial.println(driverSwitch3);
+      //Engine Speed CAN Frame
+      if(rxFrame.identifier == 0x640) {  
+        byte rpmLow = rxFrame.data[0];
+        byte rpmHigh = rxFrame.data[1];
+        rpm = (rpmLow << 8) + rpmHigh;
       }
-  }
-
-  // switch (gear) {
-  //     case 0:  // your hand is on the sensor
-  //       leds[0] = CRGB::White;
-  //       FastLED.show();
-  //       break;
-  //     case 1:  // your hand is close to the sensor
-  //       leds[0] = CRGB::Red;
-  //       FastLED.show();
-  //       break;
-  //     case 2:  // your hand is a few inches from the sensor
-  //       leds[0] = CRGB::Orange;
-  //       FastLED.show();
-  //       break;
-  //     case 3:  // your hand is nowhere near the sensor
-  //       leds[0] = CRGB::Yellow;
-  //       FastLED.show();
-  //       break;
-  //     case 4:  // your hand is nowhere near the sensor
-  //       leds[0] = CRGB::Green;
-  //       FastLED.show();
-  //       break;
-  //     case 5:  // your hand is nowhere near the sensor
-  //       leds[0] = CRGB::Blue;
-  //       FastLED.show();
-  //       break;
-  //     case 6:  // your hand is nowhere near the sensor
-  //       leds[0] = CRGB::Purple;
-  //       FastLED.show();
-  //       break;
-  //     default:
-  //       leds[0] = CRGB::Black;
-  //       FastLED.show();
-  //       break;
-  // }
-
-    // if(clt < 70){
-    //   pixels.setPixelColor(0, pixels.Color(0,0,150));
-    // }
-    // else if(clt >= 70 && clt <= 100){
-    //   pixels.setPixelColor(0, pixels.Color(0,150,0));
-    // }
-    // else if(clt > 100){
-    //   pixels.setPixelColor(0, pixels.Color(150,0,0));
-    // }
-    // else{
-    //   pixels.setPixelColor(0, pixels.Color(0,0,0));
-    // }
-
-    //pixels.show();
-    //delay(10);
-
-
-    //FastLED.show();
-
-    // Serial.print("RPM: ");
-    // Serial.println(rpm);
-
-    // Serial.print("CLT: ");
-    // Serial.println(clt);
-
-    // Serial.print("GEAR: ");
-    // Serial.println(gear);
-
-    //FastLED.show();
     
-    // Small delay to control the overall speed of the animation
-    //delay(0.001);
+      //Goolant CAN Frame
+      if(rxFrame.identifier == 0x649){
+        clt = rxFrame.data[0] - 40;
+      }
 
+      //Gear position CAN Frame
+      if(rxFrame.identifier == 0x64D){
+        gear = rxFrame.data[6] & 0b00001111;
+      }
+
+      //Pit Switch CAN Frame
+      if(rxFrame.identifier == 0x64E){
+        driverSwitch3 = rxFrame.data[3] & 0b01000000;
+      }
+    }
   }
 }
     
-
-void Task2code(void *parameter2) {
+void Neopixel_Task_Code(void *parameter2) {
 
   while(true){
+
+    //Clears any existing pixels 
     pixels.clear();
-    //Serial.println("Task 2 Running");
 
-  //   static uint32_t lastStamp = 0;
-  //   uint32_t currentStamp = millis();
-  //   //int buttonState = digitalRead(35);
-
-  //   if(currentStamp - lastStamp > 50) {   // sends OBD2 request every second
-  //     lastStamp = currentStamp;
-  //     //sendObdFrame(5); // For coolant temperature
-  //   }
-    
-  //   // if(buttonState == 0){
-  //   //   digitalWrite(14, HIGH);
-  //   // }
-  //   // else
-  //   // {
-  //   //   digitalWrite(14, LOW);
-  //   // }
-
-  //     if(ESP32Can.readFrame(rxFrame, 1000)) {
-        
-  //     //Comment out if too many frames
-  //     //Serial.printf("Received frame: %03X  \r\n", rxFrame.identifier);
-  //       if(rxFrame.identifier == 0x640) {  
-  //         //Serial.println("RECIEVED");
-  //         // Standard OBD2 frame responce ID
-  //         byte rpmLow = rxFrame.data[0];
-  //         byte rpmHigh = rxFrame.data[1];
-  //         rpm = (rpmLow << 8) + rpmHigh;
-            
-  //       }
-
-  //       if(rxFrame.identifier == 0x649){
-  //         clt = rxFrame.data[0] - 40;
-  //       }
-
-  //       if(rxFrame.identifier == 0x64D){
-  //         gear = rxFrame.data[6] & 0b00001111;
-          
-  //       }
-  //       if(rxFrame.identifier == 0x64E){
-  //         driverSwitch3 = rxFrame.data[3] & 0b01000000;
-  //         Serial.println(driverSwitch3);
-  //     }
-  // }
-
-  // switch (gear) {
-  //     case 0:  // your hand is on the sensor
-  //       leds[0] = CRGB::White;
-  //       FastLED.show();
-  //       break;
-  //     case 1:  // your hand is close to the sensor
-  //       leds[0] = CRGB::Red;
-  //       FastLED.show();
-  //       break;
-  //     case 2:  // your hand is a few inches from the sensor
-  //       leds[0] = CRGB::Orange;
-  //       FastLED.show();
-  //       break;
-  //     case 3:  // your hand is nowhere near the sensor
-  //       leds[0] = CRGB::Yellow;
-  //       FastLED.show();
-  //       break;
-  //     case 4:  // your hand is nowhere near the sensor
-  //       leds[0] = CRGB::Green;
-  //       FastLED.show();
-  //       break;
-  //     case 5:  // your hand is nowhere near the sensor
-  //       leds[0] = CRGB::Blue;
-  //       FastLED.show();
-  //       break;
-  //     case 6:  // your hand is nowhere near the sensor
-  //       leds[0] = CRGB::Purple;
-  //       FastLED.show();
-  //       break;
-  //     default:
-  //       leds[0] = CRGB::Black;
-  //       FastLED.show();
-  //       break;
-  // }
-    Serial.print("TASK 2: ");
-    Serial.println(clt);
-
-    if(clt < 70){
-      pixels.setPixelColor(0, pixels.Color(0,0,150));
+    //Switch statement for gear position light
+    switch (gear) {
+      case 0:  // Gear position 0
+        pixels.setPixelColor(0, pixels.Color(255,0,0));
+        break;
+      case 1:  // Gear position 1
+        pixels.setPixelColor(0, pixels.Color(0,255,0));
+        break;
+      case 2:  // Gear position 2
+        pixels.setPixelColor(0, pixels.Color(0,0,255));
+        break;
+      case 3:  // Gear position 3
+        pixels.setPixelColor(0, pixels.Color(0,255,255));
+        break;
+      case 4:  // Gear position 4
+        pixels.setPixelColor(0, pixels.Color(255,255,0));
+        break;
+      case 5:  // Gear position 5
+        pixels.setPixelColor(0, pixels.Color(255,0,255));
+        break;
+      case 6:  // Gear position 6
+        pixels.setPixelColor(0, pixels.Color(255,255,255));
+        break;
+      default: // Gear position fallback, no lighting
+        pixels.setPixelColor(0, pixels.Color(0,0,0));
+        break;
     }
-    else if(clt >= 70 && clt <= 100){
-      pixels.setPixelColor(0, pixels.Color(0,150,0));
+
+    //Coolant lighting Neopixel
+    if(clt < coolantCold){
+      pixels.setPixelColor(0, pixels.Color(0,0,255));
     }
-    else if(clt > 100){
-      pixels.setPixelColor(0, pixels.Color(150,0,0));
+    else if(clt >= coolantCold && clt <= coolantHot){
+      pixels.setPixelColor(0, pixels.Color(0,255,0));
+    }
+    else if(clt > coolantHot){
+      pixels.setPixelColor(0, pixels.Color(255,0,0));
     }
     else{
       pixels.setPixelColor(0, pixels.Color(0,0,0));
     }
 
+    //Pit Switch Input
     if(driverSwitch3 == 64){
-      pixels.setPixelColor(1, pixels.Color(150,150,150));
+      pixels.setPixelColor(1, pixels.Color(255,255,255));
     }
 
+    //Sets pixel output, 1ms delay
     pixels.show();
     delay(1);
 
   }
-
-  //Test
-
-    //delay(10);
-
-
-    //FastLED.show();
-
-    // Serial.print("RPM: ");
-    // Serial.println(rpm);
-
-    // Serial.print("CLT: ");
-    // Serial.println(clt);
-
-    // Serial.print("GEAR: ");
-    // Serial.println(gear);
-
-    //FastLED.show();
-    
-    // Small delay to control the overall speed of the animation
-    //delay(0.001);
-
 }
