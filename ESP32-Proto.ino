@@ -18,13 +18,13 @@ CanFrame rxFrame;
 TaskHandle_t CAN_Task;
 TaskHandle_t Neopixel_Task;
 
-//Defines global rpm, clt, gear integers for grabbing CAN data
+//Defines global rpm, clt, gear, etc integers for CAN data
 int rpm;
 int clt;
 int gear;
 int driverSwitch3;
 
-//value at which the "Cold" and "Hot" lights are turned on, in Celsius
+//Value at which the "Cold" and "Hot" lights are turned on, in Celsius
 //Value at which light starts flashing
 int coolantCold = 70;
 int coolantHot = 105;
@@ -33,7 +33,7 @@ int coolantFlash = 120;
 //OBD TX frame setup
 void sendObdFrame(uint8_t obdId) {
 	CanFrame obdFrame = { 0 };
-	obdFrame.identifier = 0x69; // Default OBD2 address;
+	obdFrame.identifier = 0x0F3; // Default OBD2 address;
 	obdFrame.extd = 0;
 	obdFrame.data_length_code = 8;
 	obdFrame.data[0] = 2;
@@ -48,11 +48,8 @@ void sendObdFrame(uint8_t obdId) {
   //ESP32Can.writeFrame(obdFrame);  // timeout defaults to 1 ms
 }
 
-void loop(){
-  //Do nothing :)
-}
-
 void setup() {
+  //Begin Serial comms
   Serial.begin(115200);
 
   //Set pinModes for onboard button and onboard LED
@@ -61,23 +58,25 @@ void setup() {
 
   //Setting up task for CAN bus stuffz
   xTaskCreatePinnedToCore(
-    CAN_Task_Code, /* Function to implement the task */
-    "CAN Task", /* Name of the task */
-    10000,  /* Stack size in words */
-    NULL,  /* Task input parameter */
-    0,  /* Priority of the task */
-    &CAN_Task,  /* Task handle. */
-    0); /* Core where the task should run */
+    CAN_Task_Code, //Function to implement the task
+    "CAN Task",    //Name of the task
+    10000,         //Stack size in words
+    NULL,          //Task input parameter
+    0,             //Priority of the task
+    &CAN_Task,     //Task handle
+    0              //Core where the task should run
+  );            
 
   //Settings up task for Neopixel lighting
   xTaskCreatePinnedToCore(
-    Neopixel_Task_Code, /* Function to implement the task */
-    "Neopixel Task", /* Name of the task */
-    10000,  /* Stack size in words */
-    NULL,  /* Task input parameter */
-    1,  /* Priority of the task */
-    &Neopixel_Task,  /* Task handle. */
-    1); /* Core where the task should run */
+    Neopixel_Task_Code, //Function to implement the task
+    "Neopixel Task",    //Name of the task
+    10000,              //Stack size in words
+    NULL,               //Task input parameter
+    1,                  //Priority of the task
+    &Neopixel_Task,     //Task handle
+    1                   //Core where the task should run
+  );                 
 
   //CAN setup
   ESP32Can.setPins(CAN_TX, CAN_RX);
@@ -91,15 +90,10 @@ void setup() {
   } else {
       Serial.println("CAN bus failed!");
   }
+}
 
-  // or override everything in one command;
-  // It is also safe to use .begin() without .end() as it calls it internally
-  // if(ESP32Can.begin(ESP32Can.convertSpeed(1000), CAN_TX, CAN_RX, 10, 10)) {
-  //     Serial.println("CAN bus started!");
-  // } else {
-  //     Serial.println("CAN bus failed!");
-  // }
-
+void loop(){
+  //Do nothing :)
 }
 
 void CAN_Task_Code(void *parameter) {
@@ -114,10 +108,10 @@ void CAN_Task_Code(void *parameter) {
     int buttonState = digitalRead(35);
 
     //CAN TX-ing
-    if(currentStamp - lastStamp > 50) {   // sends OBD2 request every second
-      lastStamp = currentStamp;
-      //sendObdFrame(5); // For coolant temperature
-    }
+    // if(currentStamp - lastStamp > 50) {   // sends OBD2 request every second
+    //   lastStamp = currentStamp;
+    //   sendObdFrame(5); // For coolant temperature
+    // }
     
     //Onboard button LED driving, button pressed (0, pulled up) turn the LED on
     if(buttonState == 0){
