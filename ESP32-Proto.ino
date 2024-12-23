@@ -81,7 +81,7 @@ void setup() {
   //CAN setup
   ESP32Can.setPins(CAN_TX, CAN_RX);
   ESP32Can.setRxQueueSize(5);
-	ESP32Can.setTxQueueSize(5);
+  ESP32Can.setTxQueueSize(5);
   ESP32Can.setSpeed(ESP32Can.convertSpeed(1000));
 
   // You can also just use .begin()..
@@ -206,7 +206,7 @@ void Neopixel_Task_Code(void *parameter2) {
 
     //Sets pixel output, 1ms delay
     pixels.show();
-    delay(1);
+    vTaskDelay(0.1);
 
   }
 }
