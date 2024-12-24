@@ -22,6 +22,7 @@ TaskHandle_t Neopixel_Task;
 int rpm;
 int clt;
 int gear;
+int tps;
 int driverSwitch3;
 
 //Value at which the "Cold" and "Hot" lights are turned on, in Celsius
@@ -143,8 +144,17 @@ void CAN_Task_Code(void *parameter) {
       }
 
       //Pit Switch CAN Frame
-      if(rxFrame.identifier == 0x64E){
-        driverSwitch3 = rxFrame.data[3] & 0b01000000;
+      // if(rxFrame.identifier == 0x64E){
+      //   driverSwitch3 = rxFrame.data[3] & 0b01000000;
+      // }
+
+      //TPS CAN Frame
+      if(rxFrame.identifier == 0x640){
+        byte tpsLow = rxFrame.data[6];
+        byte tpsHigh = rxFrame.data[7];
+        tps = (tpsLow << 8) + tpsHigh;
+        tps = tps/10;
+        Serial.println(tps);
       }
     }
   }
@@ -157,52 +167,60 @@ void Neopixel_Task_Code(void *parameter2) {
     //Clears any existing pixels 
     pixels.clear();
 
-    //Switch statement for gear position light
-    switch (gear) {
-      case 0:  // Gear position 0
-        pixels.setPixelColor(0, pixels.Color(255,0,0));
-        break;
-      case 1:  // Gear position 1
-        pixels.setPixelColor(0, pixels.Color(0,255,0));
-        break;
-      case 2:  // Gear position 2
-        pixels.setPixelColor(0, pixels.Color(0,0,255));
-        break;
-      case 3:  // Gear position 3
-        pixels.setPixelColor(0, pixels.Color(0,255,255));
-        break;
-      case 4:  // Gear position 4
-        pixels.setPixelColor(0, pixels.Color(255,255,0));
-        break;
-      case 5:  // Gear position 5
-        pixels.setPixelColor(0, pixels.Color(255,0,255));
-        break;
-      case 6:  // Gear position 6
-        pixels.setPixelColor(0, pixels.Color(255,255,255));
-        break;
-      default: // Gear position fallback, no lighting
-        pixels.setPixelColor(0, pixels.Color(0,0,0));
-        break;
+    //Gear position logic
+    if(gear == 14){
+      pixels.setPixelColor(0, pixels.Color(30,30,30));
+    }
+    else if(gear == 1){
+      pixels.setPixelColor(0, pixels.Color(255,0,0));
+    }
+    else if(gear == 2){
+      pixels.setPixelColor(0, pixels.Color(255,165,0));
+    }
+    else if(gear == 3){
+      pixels.setPixelColor(0, pixels.Color(255,255,0));
+    }
+    else if(gear == 4){
+      pixels.setPixelColor(0, pixels.Color(0, 255, 0));
+    }
+    else if(gear == 5){
+      pixels.setPixelColor(0, pixels.Color(0,0,255));
+    }
+    else if(gear == 6){
+      pixels.setPixelColor(0, pixels.Color(255,0,255));
+    }
+    else{
+      //Do nothing?
     }
 
     //Coolant lighting Neopixel
     if(clt < coolantCold){
-      pixels.setPixelColor(0, pixels.Color(0,0,255));
+      pixels.setPixelColor(1, pixels.Color(0,0,100));
     }
     else if(clt >= coolantCold && clt <= coolantHot){
-      pixels.setPixelColor(0, pixels.Color(0,255,0));
+      pixels.setPixelColor(1, pixels.Color(0,100,0));
     }
     else if(clt > coolantHot){
-      pixels.setPixelColor(0, pixels.Color(255,0,0));
+      pixels.setPixelColor(1, pixels.Color(100,0,0));
     }
     else{
-      pixels.setPixelColor(0, pixels.Color(0,0,0));
+      pixels.setPixelColor(1, pixels.Color(0,0,0));
     }
 
+    //RPM LED fade thing
+    // int mappedRPM = map(rpm, 3000, 7000, 0, 255);
+    // if(mappedRPM < 0){
+    //   mappedRPM = 0;
+    // }
+    // if(mappedRPM > 255){
+    //   mappedRPM = 255;
+    // }
+    // pixels.setPixelColor(0, mappedRPM, mappedRPM, mappedRPM);
+
     //Pit Switch Input
-    if(driverSwitch3 == 64){
-      pixels.setPixelColor(1, pixels.Color(255,255,255));
-    }
+    // if(driverSwitch3 == 64){
+    //   pixels.setPixelColor(0, pixels.Color(255,255,255));
+    // }
 
     //Sets pixel output, 1ms delay
     pixels.show();
